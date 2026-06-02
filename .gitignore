@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+.claude/
+
+# Env
+.env
+.env.*
+!runtime/discord-bot-src/.env.xiaokui.example
+
+# Discord bot 本機設定（真檔含實際 Discord ID，靠 .example 提供範本）
+runtime/discord-bot-src/config_xiaokui.json
+
+# Bot packaging outputs
+runtime/.build/
+src-tauri/resources/discord-bot/
+
+# 原始素材（不進 repo）
+kui/

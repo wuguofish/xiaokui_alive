@@ -1,0 +1,110 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-15
+            target: x86_64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # 從 tag 同步版本號到三個檔案
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # tauri.conf.json
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = '$VERSION';
+            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+          "
+
+          # package.json
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          # Cargo.toml（用 node 替換，避免 macOS/Linux sed -i 差異）
+          node -e "
+            const fs = require('fs');
+            let toml = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
+            toml = toml.replace(/^version = \".*\"/m, 'version = \"$VERSION\"');
+            fs.writeFileSync('src-tauri/Cargo.toml', toml);
+          "
+
+          echo "Version synced to: $VERSION"
+          echo "  tauri.conf.json: $(grep '"version"' src-tauri/tauri.conf.json)"
+          echo "  package.json: $(grep '"version"' package.json | head -1)"
+          echo "  Cargo.toml: $(grep '^version' src-tauri/Cargo.toml)"
+
+      # 建置 Tauri App
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ""
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Tsunu Alive Lite ${{ github.ref_name }}"
+          releaseBody: |
+            ## Tsunu Alive Lite
+
+            輕量版 — xterm.js + Claude CLI 原生體驗
+
+            ### 前提條件
+            請先安裝 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview)。
+
+            ### Windows
+            - 下載 `.exe` (NSIS 安裝檔) 或 `.msi` (MSI 安裝檔)
+
+            ### macOS
+            - 下載 `.dmg` 並拖到應用程式資料夾
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
