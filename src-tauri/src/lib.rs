@@ -118,6 +118,10 @@ fn runtime_launch_target_string(runtime: &DiscordBotRuntime) -> String {
     }
 }
 
+fn packaged_bot_name() -> &'static str {
+    if cfg!(windows) { "xiaokui_bot.exe" } else { "xiaokui_bot" }
+}
+
 fn inspect_discord_bot_runtime(app: &AppHandle) -> DiscordBotStatus {
     let config_dir = app_discord_bot_config_dir(app).ok();
     let env_path = config_dir.as_ref().map(|dir| dir.join(".env.xiaokui"));
@@ -132,7 +136,7 @@ fn inspect_discord_bot_runtime(app: &AppHandle) -> DiscordBotStatus {
                 env_path: env_path.as_ref().map(|p| p.display().to_string()),
                 asset_dir: Some(dir.display().to_string()),
                 source_label: Some(label.to_string()),
-                launch_target: Some(dir.join("xiaokui_bot.exe").display().to_string()),
+                launch_target: Some(dir.join(packaged_bot_name()).display().to_string()),
             };
         }
 
@@ -315,7 +319,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn dir_has_packaged_bot(dir: &Path) -> bool {
-    dir.join("xiaokui_bot.exe").exists()
+    dir.join(packaged_bot_name()).is_file()
 }
 
 fn dir_has_source_bot(dir: &Path) -> bool {
@@ -369,7 +373,7 @@ fn resolve_discord_bot_runtime(app: &AppHandle) -> Result<DiscordBotRuntime, Str
         if dir_has_packaged_bot(&dir) {
             let config_dir = ensure_discord_bot_config_dir(app, &dir)?;
             return Ok(DiscordBotRuntime {
-                launch_target: DiscordBotLaunchTarget::Executable(dir.join("xiaokui_bot.exe")),
+                launch_target: DiscordBotLaunchTarget::Executable(dir.join(packaged_bot_name())),
                 asset_dir: dir,
                 config_dir,
                 source_label: label.to_string(),

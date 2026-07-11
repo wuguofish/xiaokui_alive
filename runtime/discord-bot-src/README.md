@@ -15,8 +15,8 @@
 
 建置方式：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build_discord_bot.ps1
+```shell
+npm run build:discord-bot
 ```
 
 輸出位置：

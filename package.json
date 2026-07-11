@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "build:discord-bot": "powershell -ExecutionPolicy Bypass -File scripts/build_discord_bot.ps1",
+    "build:discord-bot": "python scripts/build_discord_bot.py",
     "build:bundle-prep": "npm run build && npm run build:discord-bot",
     "preview": "vite preview",
     "tauri": "tauri"
