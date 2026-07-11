@@ -22,8 +22,13 @@ const launchMode = ref<'new' | 'resume'>('new')
 const workingDir = ref('.')
 const modelOptions = [
   { value: '', label: 'Codex 設定檔' },
+  { value: 'gpt-5.6', label: 'GPT-5.6 Sol' },
+  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+  { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
   { value: 'gpt-5.5', label: 'GPT-5.5' },
   { value: 'gpt-5.4', label: 'GPT-5.4' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' },
   { value: 'o3', label: 'o3' },
   { value: 'o4-mini', label: 'o4-mini' },
   { value: 'gpt-4.1', label: 'GPT-4.1' },

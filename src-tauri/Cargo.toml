@@ -1,6 +1,6 @@
 [package]
 name = "xiaokui-alive"
-version = "0.2.0"
+version = "0.3.0"
 description = "Xiaokui Alive - 小葵陪你寫程式"
 authors = ["阿童 ATone and her Codex (小葵 Xiaokui)"]
 edition = "2021"

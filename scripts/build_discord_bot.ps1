@@ -30,7 +30,7 @@ $AppDistDir = Join-Path $DistRoot "xiaokui_bot"
 $BundleDir = Join-Path $RepoRoot "src-tauri\resources\discord-bot"
 $EntryScript = Join-Path $SourceDir "bot_xiaokui.py"
 $RequirementsFile = Join-Path $SourceDir "requirements.txt"
-$ConfigFile = Join-Path $SourceDir "config_xiaokui.json"
+$ConfigExampleFile = Join-Path $SourceDir "config_xiaokui.example.json"
 $EnvExampleFile = Join-Path $SourceDir ".env.xiaokui.example"
 
 if (-not (Test-Path $EntryScript)) {
@@ -81,7 +81,7 @@ Remove-Item $BundleDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $BundleDir | Out-Null
 
 Copy-Item (Join-Path $AppDistDir "*") $BundleDir -Recurse -Force
-Copy-Item $ConfigFile (Join-Path $BundleDir "config_xiaokui.json") -Force
+Copy-Item $ConfigExampleFile (Join-Path $BundleDir "config_xiaokui.json") -Force
 Copy-Item $EnvExampleFile (Join-Path $BundleDir ".env.xiaokui.example") -Force
 
 Write-Host "Discord Bot runtime 已輸出到：$BundleDir"

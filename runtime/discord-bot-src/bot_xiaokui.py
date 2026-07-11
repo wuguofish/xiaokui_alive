@@ -610,7 +610,13 @@ class CodexAppServerClient:
     async def healthcheck(self) -> None:
         """用一個輕量 request 確認 transport 與 app-server 都真的活著。"""
         result = await self._send_request_internal("model/list", {}, skip_ensure=True)
-        models = result.get("models", []) if isinstance(result, dict) else []
+        # app-server v2 exposes ModelListResponse as { data, nextCursor }.
+        # Accept the former `models` key as a compatibility fallback.
+        models = (
+            result.get("data", result.get("models", []))
+            if isinstance(result, dict)
+            else []
+        )
         if not isinstance(models, list):
             raise CodexAppServerError("Codex app-server 健康檢查失敗：model/list 回傳格式異常")
         log.info(
