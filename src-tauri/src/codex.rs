@@ -395,7 +395,9 @@ pub async fn start(
 
     // 1. Spawn app-server with WebSocket listener
     let mut cmd = Command::new(&codex_path);
-    cmd.args(["app-server", "--listen", &format!("ws://0.0.0.0:{}", port)]);
+    // The GUI only connects locally. Keep the listener on loopback so newer
+    // app-server releases do not require non-loopback WebSocket authentication.
+    cmd.args(["app-server", "--listen", &format!("ws://127.0.0.1:{}", port)]);
     cmd.current_dir(working_dir);
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::null());
@@ -457,7 +459,7 @@ pub async fn start(
     let init_result = send_request(&process, "initialize", json!({
         "clientInfo": {
             "name": "xiaokui_alive",
-            "version": "0.2.0"
+            "version": "0.3.0"
         }
     })).await?;
     eprintln!("[Codex] initialize 成功: {}", serde_json::to_string(&init_result).unwrap_or_default());
