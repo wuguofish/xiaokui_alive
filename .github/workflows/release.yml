@@ -2,15 +2,137 @@ name: Release Build
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Never cancel a release while native installers are being uploaded.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate project versions
+        id: version
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const tauri = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          const cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
+          const cargoLock = fs.readFileSync('src-tauri/Cargo.lock', 'utf8');
+          const cargoVersion = cargo.match(/^version = "([^"]+)"/m)?.[1];
+          const cargoLockVersion = cargoLock.match(
+            /\[\[package\]\]\s+name = "xiaokui-alive"\s+version = "([^"]+)"/m
+          )?.[1];
+
+          const versions = {
+            'package.json': pkg.version,
+            'package-lock.json': lock.version,
+            'package-lock root package': lock.packages?.['']?.version,
+            'src-tauri/tauri.conf.json': tauri.version,
+            'src-tauri/Cargo.toml': cargoVersion,
+            'src-tauri/Cargo.lock': cargoLockVersion,
+          };
+          const expected = pkg.version;
+          const mismatches = Object.entries(versions)
+            .filter(([, version]) => version !== expected);
+
+          if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(expected)) {
+            throw new Error(`Invalid release version: ${expected}`);
+          }
+          if (mismatches.length) {
+            throw new Error(
+              `Version mismatch; expected ${expected}: ` +
+              mismatches.map(([file, version]) => `${file}=${version}`).join(', ')
+            );
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${expected}\ntag=v${expected}\n`);
+          console.log(`Validated release version v${expected}`);
+          NODE
+
+      - name: Create or validate release tag
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          REMOTE_SHA="$(git rev-list -n 1 "$TAG" 2>/dev/null || true)"
+
+          if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::${TAG} already points to ${REMOTE_SHA}; bump the project version before releasing ${GITHUB_SHA}."
+            exit 1
+          fi
+
+          if [ -z "$REMOTE_SHA" ]; then
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+            echo "Created ${TAG} at ${GITHUB_SHA}."
+          else
+            echo "${TAG} already points to this commit; treating this run as a retry."
+          fi
+
+      - name: Create or validate draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" --json isDraft --jq '.isDraft' > release-state.txt 2>/dev/null; then
+            if [ "$(cat release-state.txt)" != "true" ]; then
+              echo "::error::Release ${TAG} is already published; bump the project version for a new release."
+              exit 1
+            fi
+            echo "Draft release ${TAG} already exists; reusing it."
+          else
+            cat > release-body.md <<'EOF'
+          ## Xiaokui Alive
+
+          以 Codex app-server 為核心的小葵桌面整合介面。
+
+          ### 使用前提
+
+          請先安裝並登入最新版本的 [OpenAI Codex](https://developers.openai.com/codex/cli/)。
+
+          ### Windows
+
+          下載 `.exe`（NSIS 安裝檔）或 `.msi`（MSI 安裝檔）。
+
+          ### macOS
+
+          依照裝置架構下載 Apple Silicon 或 Intel 的 `.dmg`。
+          EOF
+
+            gh release create "$TAG" \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "Xiaokui Alive ${TAG}" \
+              --notes-file release-body.md
+          fi
+
   build:
+    name: Build (${{ matrix.target }})
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -25,14 +147,21 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -47,64 +176,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # 從 tag 同步版本號到三個檔案
-      - name: Sync version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-
-          # tauri.conf.json
-          node -e "
-            const fs = require('fs');
-            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-            conf.version = '$VERSION';
-            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
-          "
-
-          # package.json
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '$VERSION';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-
-          # Cargo.toml（用 node 替換，避免 macOS/Linux sed -i 差異）
-          node -e "
-            const fs = require('fs');
-            let toml = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
-            toml = toml.replace(/^version = \".*\"/m, 'version = \"$VERSION\"');
-            fs.writeFileSync('src-tauri/Cargo.toml', toml);
-          "
-
-          echo "Version synced to: $VERSION"
-          echo "  tauri.conf.json: $(grep '"version"' src-tauri/tauri.conf.json)"
-          echo "  package.json: $(grep '"version"' package.json | head -1)"
-          echo "  Cargo.toml: $(grep '^version' src-tauri/Cargo.toml)"
-
-      # 建置 Tauri App
-      - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+      - name: Build and upload Tauri app
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ""
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Tsunu Alive Lite ${{ github.ref_name }}"
-          releaseBody: |
-            ## Tsunu Alive Lite
-
-            輕量版 — xterm.js + Claude CLI 原生體驗
-
-            ### 前提條件
-            請先安裝 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview)。
-
-            ### Windows
-            - 下載 `.exe` (NSIS 安裝檔) 或 `.msi` (MSI 安裝檔)
-
-            ### macOS
-            - 下載 `.dmg` 並拖到應用程式資料夾
+          tagName: ${{ needs.prepare.outputs.tag }}
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}

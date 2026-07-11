@@ -459,7 +459,7 @@ pub async fn start(
     let init_result = send_request(&process, "initialize", json!({
         "clientInfo": {
             "name": "xiaokui_alive",
-            "version": "0.3.0"
+            "version": env!("CARGO_PKG_VERSION")
         }
     })).await?;
     eprintln!("[Codex] initialize 成功: {}", serde_json::to_string(&init_result).unwrap_or_default());
